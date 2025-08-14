@@ -19,6 +19,12 @@ jobs:
         with:
           channel: 'stable'
           flutter-version: '3.32.8'
+          cache: true  # Ajoute cette ligne pour activer le cache
+
+      - name: Show Flutter version and doctor
+        run: |
+          flutter --version
+          flutter doctor -v
 
       - name: Install dependencies
         run: flutter pub get
