@@ -19,7 +19,7 @@ jobs:
         with:
           channel: 'stable'
           flutter-version: '3.32.8'
-          cache: true  # Ajoute cette ligne pour activer le cache
+          cache: true
 
       - name: Show Flutter version and doctor
         run: |
