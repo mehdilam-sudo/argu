@@ -14,12 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - name: Get Flutter SDK
+        uses: actions/checkout@v4
         with:
-          channel: 'stable'
-          flutter-version: '3.32.8'
-          cache: true
+          repository: flutter/flutter
+          ref: 3.32.8
+          path: flutter-sdk
+
+      - name: Add Flutter to PATH
+        run: echo "::add-path::$(pwd)/flutter-sdk/bin"
 
       - name: Show Flutter version and doctor
         run: |
