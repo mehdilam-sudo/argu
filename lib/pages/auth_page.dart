@@ -13,48 +13,58 @@ class AuthPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The Scaffold widget provides the basic layout structure for the page.
     return Scaffold(
       body: StreamBuilder<User?>(
-        // The 'stream' property is what a StreamBuilder listens to for data.
-        // Here, we are listening to Firebase Authentication's 'authStateChanges()'.
-        // This is a special stream that sends an update whenever a user signs in, signs out, or their status changes.
-        // It allows the app to react in real time to the user's authentication state.
+        // Listen to Firebase Authentication's 'authStateChanges()' stream.
+        // This stream emits an event whenever the user's sign-in state changes.
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          // If the user is logged in
-          if (snapshot.hasData) {
-            final user = snapshot.data!;
-            
-            return StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-              builder: (context, userSnapshot) {
-                // If the user's data exists in Firestore
-                if (userSnapshot.hasData && userSnapshot.data!.exists) {
-                  final data = userSnapshot.data!.data() as Map<String, dynamic>?;
-                  
-                  final termsAccepted = data?['termsAccepted'] == true;
-                  final profileComplete = data?['profileComplete'] == true;
-                  
-                  // If the profile is complete, go to the HomePage
-                  if (termsAccepted && profileComplete) {
-                    return HomePage();
-                  }
-                  
-                  // Otherwise, if terms are accepted but the profile is not complete, go to the info page
-                  else if (termsAccepted && !profileComplete) {
-                    return const UserInfoPage();
-                  }
-                }
-                
-                // By default, or if terms are not accepted, go to the terms page
-                return const TermsAndPrivacyPage();
-              },
-            );
-          } 
-          // If the user is not logged in, show the login page
-          else {
+          // If we are waiting for authentication data, display a loading indicator.
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          // If a user is not logged in, show the login or register page.
+          final user = snapshot.data;
+          if (user == null) {
             return const LoginOrRegisterPage();
           }
+
+          // Listen to the user's profile document in Firestore.
+          // This stream allows the app to react in real-time to profile changes.
+          return StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+            builder: (context, userSnapshot) {
+              // Display a loading indicator while we wait for the profile data.
+              if (userSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              // If the user's profile data doesn't exist, show the terms page.
+              if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+                return const TermsAndPrivacyPage();
+              }
+
+              // If the profile data is available, check the conditions.
+              final data = userSnapshot.data!.data() as Map<String, dynamic>?;
+              final termsAccepted = data?['termsAccepted'] == true;
+              final profileComplete = data?['profileComplete'] == true;
+
+              // If terms are accepted and the profile is complete, show the home page.
+              if (termsAccepted && profileComplete) {
+                return HomePage();
+              }
+
+              // If terms are accepted but the profile is not complete, show the info page.
+              if (termsAccepted && !profileComplete) {
+                return const UserInfoPage();
+              }
+              
+              // If none of the above, show the terms and privacy page as a default.
+              return const TermsAndPrivacyPage();
+            },
+          );
         },
       ),
     );
