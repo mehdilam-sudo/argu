@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "975781771999",
+    "project_id": "argu-f6e8e",
+    "storage_bucket": "argu-f6e8e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:975781771999:android:0623290ad1f49ed795076a",
+        "android_client_info": {
+          "package_name": "com.example.argu"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "975781771999-mgcfppjlc115nose9oi6e65eln246nk8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqY3UyP9gFwzOqnRFjPBwLqLiAAghKmSU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "975781771999-mgcfppjlc115nose9oi6e65eln246nk8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "975781771999-t732qs0m69nci9bmohr1ap1u9mnd0a25.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.argu"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
