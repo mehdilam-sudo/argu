@@ -13,60 +13,59 @@ class AuthPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The Scaffold widget provides the basic layout structure for the page.
-    return Scaffold(
-      body: StreamBuilder<User?>(
-        // Listen to Firebase Authentication's 'authStateChanges()' stream.
-        // This stream emits an event whenever the user's sign-in state changes.
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          // If we are waiting for authentication data, display a loading indicator.
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    // This widget is a router, it should not return a Scaffold itself.
+    // The pages it returns (HomePage, LoginOrRegisterPage, etc.) are responsible for their own Scaffolds.
+    return StreamBuilder<User?>(
+      // Listen to Firebase Authentication's 'authStateChanges()' stream.
+      // This stream emits an event whenever the user's sign-in state changes.
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // If we are waiting for authentication data, display a loading indicator.
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-          // If a user is not logged in, show the login or register page.
-          final user = snapshot.data;
-          if (user == null) {
-            return const LoginOrRegisterPage();
-          }
+        // If a user is not logged in, show the login or register page.
+        final user = snapshot.data;
+        if (user == null) {
+          return const LoginOrRegisterPage();
+        }
 
-          // Listen to the user's profile document in Firestore.
-          // This stream allows the app to react in real-time to profile changes.
-          return StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-            builder: (context, userSnapshot) {
-              // Display a loading indicator while we wait for the profile data.
-              if (userSnapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+        // Listen to the user's profile document in Firestore.
+        // This stream allows the app to react in real-time to profile changes.
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+          builder: (context, userSnapshot) {
+            // Display a loading indicator while we wait for the profile data.
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-              // If the user's profile data doesn't exist, show the terms page.
-              if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-                return const TermsAndPrivacyPage();
-              }
-
-              // If the profile data is available, check the conditions.
-              final data = userSnapshot.data!.data() as Map<String, dynamic>?;
-              final termsAccepted = data?['termsAccepted'] == true;
-              final profileComplete = data?['profileComplete'] == true;
-
-              // If terms are accepted and the profile is complete, show the home page.
-              if (termsAccepted && profileComplete) {
-                return HomePage();
-              }
-
-              // If terms are accepted but the profile is not complete, show the info page.
-              if (termsAccepted && !profileComplete) {
-                return const UserInfoPage();
-              }
-              
-              // If none of the above, show the terms and privacy page as a default.
+            // If the user's profile data doesn't exist, show the terms page.
+            if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
               return const TermsAndPrivacyPage();
-            },
-          );
-        },
-      ),
+            }
+
+            // If the profile data is available, check the conditions.
+            final data = userSnapshot.data!.data() as Map<String, dynamic>?;
+            final termsAccepted = data?['termsAccepted'] == true;
+            final profileComplete = data?['profileComplete'] == true;
+
+            // If terms are accepted and the profile is complete, show the home page.
+            if (termsAccepted && profileComplete) {
+              return const HomePage();
+            }
+
+            // If terms are accepted but the profile is not complete, show the info page.
+            if (termsAccepted && !profileComplete) {
+              return const UserInfoPage();
+            }
+            
+            // If none of the above, show the terms and privacy page as a default.
+            return const TermsAndPrivacyPage();
+          },
+        );
+      },
     );
   }
 }

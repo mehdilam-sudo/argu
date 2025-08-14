@@ -1,9 +1,9 @@
 // lib/pages/home_page.dart
 import 'package:argu/pages/add_debate_page.dart';
+import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../widgets/my_bottom_navigation_bar.dart';
 import 'favorite_page.dart';
 import 'profile_page.dart';
 import 'search_page.dart';
@@ -79,32 +79,67 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _onItemTapped(int index) {
-    _pageController.jumpToPage(index);
-  }
-
   void signUserOut() {
     FirebaseAuth.instance.signOut();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Liste des icônes pour la barre de navigation
+    final navIcons = [
+      Icons.home,
+      Icons.search,
+      Icons.add,
+      Icons.favorite,
+      Icons.person,
+    ];
+
     return Scaffold(
+      // On désactive la redimension pour que le contenu ne soit pas poussé par le clavier.
+      resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      resizeToAvoidBottomInset: false, // Cette ligne est cruciale ici
-      body: PageView(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        onPageChanged: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        children: _pages,
-      ),
-      bottomNavigationBar: MyBottomNavigationBar(
-        selectedIndex: _selectedIndex,
-        onTap: _onItemTapped,
+      // On utilise un Stack pour superposer la barre de navigation sur le contenu.
+      body: Stack(
+        children: [
+          PageView(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (index) {
+              setState(() {
+                _selectedIndex = index;
+              });
+            },
+            children: _pages,
+          ),
+          // On positionne la barre de navigation en bas de l'écran de manière absolue.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: CurvedNavigationBar(
+              backgroundColor: Colors.transparent,
+              color: Theme.of(context).colorScheme.primary,
+              buttonBackgroundColor: Theme.of(context).colorScheme.primary,
+              height: 65,
+              animationDuration: const Duration(milliseconds: 300),
+              index: _selectedIndex,
+              onTap: (index) {
+                _pageController.jumpToPage(index);
+              },
+              items: navIcons.asMap().entries.map((entry) {
+                final index = entry.key;
+                final iconData = entry.value;
+                return Icon(
+                  iconData,
+                  size: 30,
+                  color: _selectedIndex == index
+                      ? Theme.of(context).colorScheme.surface
+                      : Theme.of(context).colorScheme.onPrimary,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
