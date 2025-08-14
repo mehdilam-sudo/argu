@@ -15,6 +15,10 @@ class AuthPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: StreamBuilder<User?>(
+        // The 'stream' property is what a StreamBuilder listens to for data.
+        // Here, we are listening to Firebase Authentication's 'authStateChanges()'.
+        // This is a special stream that sends an update whenever a user signs in, signs out, or their status changes.
+        // It allows the app to react in real time to the user's authentication state.
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           // If the user is logged in
