@@ -22,10 +22,12 @@ class AgoraService {
   bool isMicEnabled = true;
   bool isCameraEnabled = true;
 
+  // Use BehaviorSubject to get the last emitted value upon subscription.
   final _remoteUsers = BehaviorSubject<List<int>>.seeded([]);
   final _localMicVolume = BehaviorSubject<int>.seeded(0);
   final _usersCameraStatus = BehaviorSubject<Map<int, bool>>.seeded({});
 
+  // Public streams for widgets to listen to.
   Stream<List<int>> get remoteUsers => _remoteUsers.stream;
   Stream<int> get localMicVolume => _localMicVolume.stream;
   Stream<Map<int, bool>> get usersCameraStatus => _usersCameraStatus.stream;
@@ -54,7 +56,8 @@ class AgoraService {
     _engine!.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (connection, elapsed) {
-          print("L'utilisateur ${connection.localUid} a rejoint le canal.");
+          print("Local user ${connection.localUid} joined the channel.");
+          // FIX: Check if the stream controller is closed before adding events.
           if (_usersCameraStatus.isClosed) return;
           final currentStatus = _usersCameraStatus.value;
           _usersCameraStatus.add({
@@ -63,38 +66,40 @@ class AgoraService {
           });
         },
         onUserJoined: (connection, remoteUid, elapsed) {
-          print("L'utilisateur distant $remoteUid a rejoint le canal.");
-          if (_remoteUsers.isClosed) return;
-          final currentUsers = _remoteUsers.value;
-          _remoteUsers.add([...currentUsers, remoteUid]);
-
-          if (_usersCameraStatus.isClosed) return;
-          final currentStatus = _usersCameraStatus.value;
-          _usersCameraStatus.add({
-            ...currentStatus,
-            remoteUid: true,
-          });
+          print("Remote user $remoteUid joined the channel.");
+          if (!_remoteUsers.isClosed) {
+            final currentUsers = _remoteUsers.value;
+            _remoteUsers.add([...currentUsers, remoteUid]);
+          }
+          if (!_usersCameraStatus.isClosed) {
+            final currentStatus = _usersCameraStatus.value;
+            _usersCameraStatus.add({
+              ...currentStatus,
+              remoteUid: true,
+            });
+          }
         },
         onUserOffline: (connection, remoteUid, reason) {
-          print("L'utilisateur distant $remoteUid a quitté le canal.");
-          if (_remoteUsers.isClosed) return;
-          final currentUsers = _remoteUsers.value;
-          _remoteUsers.add(currentUsers.where((uid) => uid != remoteUid).toList());
-
-          if (_usersCameraStatus.isClosed) return;
-          final currentStatus = _usersCameraStatus.value;
-          currentStatus.remove(remoteUid);
-          _usersCameraStatus.add(currentStatus);
+          print("Remote user $remoteUid left the channel.");
+          if (!_remoteUsers.isClosed) {
+            final currentUsers = _remoteUsers.value;
+            _remoteUsers.add(currentUsers.where((uid) => uid != remoteUid).toList());
+          }
+          if (!_usersCameraStatus.isClosed) {
+            final currentStatus = _usersCameraStatus.value;
+            currentStatus.remove(remoteUid);
+            _usersCameraStatus.add(currentStatus);
+          }
         },
         onLeaveChannel: (connection, stats) {
-          print("L'utilisateur a quitté le canal.");
+          print("User left the channel.");
           if (!_remoteUsers.isClosed) _remoteUsers.add([]);
           if (!_usersCameraStatus.isClosed) _usersCameraStatus.add({});
         },
         onAudioVolumeIndication: (connection, speakers, totalVolume, speakerNumber) {
           if (_localMicVolume.isClosed) return;
           for (var speaker in speakers) {
-            if (speaker.uid == 0) {
+            if (speaker.uid == 0) { // 0 is the local user
               _localMicVolume.add(speaker.volume ?? 0);
               break;
             }
@@ -125,7 +130,7 @@ class AgoraService {
       final response = await http.get(Uri.parse('$_tokenServerUrl/rtc/$channelName/0'));
 
       if (response.statusCode != 200) {
-        throw Exception('Erreur serveur: ${response.statusCode}, ${response.body}');
+        throw Exception('Server Error: ${response.statusCode}, ${response.body}');
       }
 
       final token = jsonDecode(response.body)['token'];
@@ -133,25 +138,19 @@ class AgoraService {
       await _engine!.joinChannel(
         token: token,
         channelId: channelName,
-        uid: 0,
+        uid: 0, // Local user ID is 0
         options: const ChannelMediaOptions(),
       );
     } catch (e) {
-      print("Erreur de récupération de jeton : $e");
+      print("Token fetch error: $e");
       rethrow;
     }
   }
 
   Future<void> leaveChannel() async {
     if (_engine == null) return;
-    final state = await _engine!.getConnectionState();
-    if (state != ConnectionStateType.connectionStateConnected &&
-        state != ConnectionStateType.connectionStateConnecting) {
-      print("Le client n'est pas dans un canal. Pas besoin de le quitter.");
-      return;
-    }
     await _engine!.leaveChannel();
-    print("Le client a quitté le canal.");
+    print("Client left the channel.");
   }
 
   Future<void> toggleMic(bool enabled) async {
@@ -163,13 +162,16 @@ class AgoraService {
   Future<void> toggleCamera(bool enabled) async {
     if (_engine == null) return;
     isCameraEnabled = enabled;
-    await _engine!.enableLocalVideo(enabled); // CORRECTION ICI
+    await _engine!.enableLocalVideo(enabled);
     
-    final currentStatus = _usersCameraStatus.value;
-    _usersCameraStatus.add({
-      ...currentStatus,
-      0: enabled,
-    });
+    // FIX: Check if the stream controller is closed before adding events.
+    if (!_usersCameraStatus.isClosed) {
+      final currentStatus = _usersCameraStatus.value;
+      _usersCameraStatus.add({
+        ...currentStatus,
+        0: enabled, // 0 is the local user
+      });
+    }
   }
 
   Future<void> switchCamera() async {
@@ -179,9 +181,12 @@ class AgoraService {
 
   Future<void> dispose() async {
     if (_engine != null) {
+      // Close all stream controllers to prevent memory leaks.
       _remoteUsers.close();
       _localMicVolume.close();
       _usersCameraStatus.close();
+      
+      // Leave the channel and release the engine resources.
       await _engine!.leaveChannel();
       await _engine!.release();
       _engine = null;

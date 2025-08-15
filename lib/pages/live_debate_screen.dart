@@ -6,14 +6,18 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:argu/services/agora_service.dart';
-import 'package:argu/pages/home_page.dart';
+import 'package:argu/widgets/debate_lifecycle_overlay.dart';
+import 'package:argu/widgets/debate_video_view.dart';
+import 'package:argu/utils/duration_formatter.dart';
 
 // Enum to represent the distinct states of the debate lifecycle.
+// This remains here as it is tightly coupled with the screen's logic.
 enum DebateLifecycleState {
   waitingForOpponent,
   countdownToStart,
   inProgress,
   opponentDisconnected,
+  finished,
 }
 
 class LiveDebateScreen extends StatefulWidget {
@@ -35,8 +39,12 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
   RtcEngine? _engine;
   late final Future<void> _initializationFuture;
 
-  // State management for the debate lifecycle
+  // State management
   DebateLifecycleState _lifecycleState = DebateLifecycleState.waitingForOpponent;
+  StreamSubscription? _remoteUsersSubscription;
+  List<int> _remoteUids = [];
+
+  // Timers
   Timer? _mainDebateTimer;
   Duration _elapsedTime = Duration.zero;
   Timer? _countdownTimer;
@@ -48,17 +56,17 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
   void initState() {
     super.initState();
     if (widget.isSpectator) {
-      _lifecycleState = DebateLifecycleState.inProgress; // Spectators just watch
+      _lifecycleState = DebateLifecycleState.inProgress;
     }
     _initializationFuture = _initializeScreen();
   }
 
   @override
   void dispose() {
+    _remoteUsersSubscription?.cancel();
     _mainDebateTimer?.cancel();
     _countdownTimer?.cancel();
     _disconnectionTimer?.cancel();
-    _agoraService.leaveChannel();
     _agoraService.dispose();
     super.dispose();
   }
@@ -72,43 +80,39 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
       );
       _engine = _agoraService.getEngine();
       await _agoraService.joinChannel(widget.debateId);
-
-      // The main timer is now started by the state machine, not on init.
+      _listenToParticipants();
     } catch (error) {
       print("Error during screen initialization: $error");
       rethrow;
     }
   }
 
-  void _handleParticipantChange(int remoteParticipantCount) {
-    if (widget.isSpectator) return; // State logic doesn't apply to spectators
+  void _listenToParticipants() {
+    _remoteUsersSubscription = _agoraService.remoteUsers.listen((remoteUids) {
+      if (!mounted) return;
+      setState(() => _remoteUids = remoteUids);
+      _handleParticipantChange(remoteUids.length);
+    });
+  }
 
-    // --- Opponent Joins ---
+  void _handleParticipantChange(int remoteParticipantCount) {
+    if (widget.isSpectator || _lifecycleState == DebateLifecycleState.finished) return;
+
     if (remoteParticipantCount > 0 && _lifecycleState == DebateLifecycleState.waitingForOpponent) {
       _startCountdown();
-    }
-    // --- Opponent Leaves ---
-    else if (remoteParticipantCount == 0 && _lifecycleState == DebateLifecycleState.inProgress) {
+    } else if (remoteParticipantCount == 0 && _lifecycleState == DebateLifecycleState.inProgress) {
       _startDisconnectionGracePeriod();
-    }
-    // --- Opponent Rejoins ---
-    else if (remoteParticipantCount > 0 && _lifecycleState == DebateLifecycleState.opponentDisconnected) {
+    } else if (remoteParticipantCount > 0 && _lifecycleState == DebateLifecycleState.opponentDisconnected) {
       _cancelDisconnectionGracePeriod();
     }
   }
 
   void _startCountdown() {
     if (!mounted) return;
-    // Schedule the SnackBar to show after the current build frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Opponent joined! Debate starting soon..."), duration: Duration(seconds: 2)));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Opponent joined! Debate starting soon..."), duration: Duration(seconds: 2)));
     });
-    setState(() {
-      _lifecycleState = DebateLifecycleState.countdownToStart;
-      _countdownSeconds = 3;
-    });
+    setState(() => _lifecycleState = DebateLifecycleState.countdownToStart);
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_countdownSeconds > 1) {
@@ -120,14 +124,18 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
     });
   }
 
-  void _startDebate() async {
+  Future<void> _startDebate() async {
     if (!mounted) return;
-    setState(() => _lifecycleState = DebateLifecycleState.inProgress);
     try {
       final debateDoc = await FirebaseFirestore.instance.collection('debates').doc(widget.debateId).get();
       final data = debateDoc.data();
-      if (data != null && data.containsKey('createdAt')) {
-        _startMainTimer((data['createdAt'] as Timestamp).toDate());
+      
+      // FIX: setState is called synchronously after the await.
+      if (mounted) {
+        setState(() => _lifecycleState = DebateLifecycleState.inProgress);
+        if (data != null && data.containsKey('createdAt')) {
+          _startMainTimer((data['createdAt'] as Timestamp).toDate());
+        }
       }
     } catch (e) {
       print("Error fetching start time: $e");
@@ -136,14 +144,14 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
 
   void _startDisconnectionGracePeriod() {
     if (!mounted) return;
-    setState(() {
-      _lifecycleState = DebateLifecycleState.opponentDisconnected;
-      _disconnectionSeconds = 15;
-    });
+    setState(() => _lifecycleState = DebateLifecycleState.opponentDisconnected);
     _disconnectionTimer?.cancel();
     _disconnectionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_disconnectionSeconds > 0) {
         if (mounted) setState(() => _disconnectionSeconds--);
+      } else {
+        _disconnectionTimer?.cancel();
+        _endDebateDueToDisconnect();
       }
     });
   }
@@ -152,27 +160,33 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
     if (!mounted) return;
     _disconnectionTimer?.cancel();
     setState(() => _lifecycleState = DebateLifecycleState.inProgress);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Opponent reconnected!"), duration: Duration(seconds: 2)));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Opponent reconnected!"), duration: Duration(seconds: 2)));
+    });
   }
 
   Future<void> _endDebateDueToDisconnect() async {
-    if (mounted) {
-      // Prevent user interaction while ending
-      setState(() => _lifecycleState = DebateLifecycleState.waitingForOpponent);
-      await _updateDebateStatus('finished');
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Text("Debate Ended"),
-          content: const Text("Your opponent failed to reconnect in time."),
-          actions: [TextButton(child: const Text("OK"), onPressed: () => Navigator.of(ctx).pop())],
-        ),
-      ).then((_) => Navigator.of(context).pop());
-    }
-  }
+    if (!mounted || _lifecycleState == DebateLifecycleState.finished) return;
 
-  // --- Timers and Formatters ---
+    setState(() => _lifecycleState = DebateLifecycleState.finished);
+    await _updateDebateStatus('finished');
+
+    final currentContext = context;
+    if (!currentContext.mounted) return;
+
+    await showDialog(
+      context: currentContext,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Debate Ended"),
+        content: const Text("Your opponent failed to reconnect in time."),
+        actions: [TextButton(child: const Text("OK"), onPressed: () => Navigator.of(ctx).pop())],
+      ),
+    );
+    
+    if (!currentContext.mounted) return;
+    Navigator.of(currentContext).pop();
+  }
 
   void _startMainTimer(DateTime startTime) {
     _mainDebateTimer?.cancel();
@@ -181,17 +195,31 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
     });
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
-  }
-
   // --- UI Actions ---
 
-  void _toggleMic() => setState(() => _agoraService.toggleMic(!_agoraService.isMicEnabled));
-  void _toggleCamera() => setState(() => _agoraService.toggleCamera(!_agoraService.isCameraEnabled));
+  /// Toggles the microphone. This is now an async function.
+  Future<void> _toggleMic() async {
+    // Await the async operation from the service first.
+    await _agoraService.toggleMic(!_agoraService.isMicEnabled);
+    // Then, update the state synchronously if the widget is still mounted.
+    if (mounted) {
+      setState(() {
+        // The state is now sourced directly from the service.
+      });
+    }
+  }
+
+  /// Toggles the camera. This is now an async function.
+  Future<void> _toggleCamera() async {
+    // Await the async operation from the service first.
+    await _agoraService.toggleCamera(!_agoraService.isCameraEnabled);
+    // Then, update the state synchronously if the widget is still mounted.
+    if (mounted) {
+      setState(() {
+        // The state is now sourced directly from the service.
+      });
+    }
+  }
 
   Future<void> _updateDebateStatus(String status) async {
     if (!widget.isSpectator) {
@@ -203,6 +231,8 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
   }
 
   Future<void> _endCall() async {
+    if (_lifecycleState == DebateLifecycleState.finished) return;
+    setState(() => _lifecycleState = DebateLifecycleState.finished);
     await _updateDebateStatus('finished');
     if (mounted) Navigator.of(context).pop();
   }
@@ -216,8 +246,8 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
       child: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          title: Text(_formatDuration(_elapsedTime)),
-          actions: [/*... existing actions ...*/],
+          title: Text(formatDuration(_elapsedTime)),
+          actions: _buildAppBarActions(),
         ),
         body: FutureBuilder<void>(
           future: _initializationFuture,
@@ -228,23 +258,19 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
             if (snapshot.hasError) {
               return Center(child: Text('Error during connection: ${snapshot.error}'));
             }
-            return StreamBuilder<List<int>>(
-              stream: _agoraService.remoteUsers,
-              builder: (context, remoteSnapshot) {
-                final remoteUids = remoteSnapshot.data ?? [];
-                _handleParticipantChange(remoteUids.length);
-
-                return StreamBuilder<Map<int, bool>>(
-                  stream: _agoraService.usersCameraStatus,
-                  builder: (context, cameraStatusSnapshot) {
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        _buildVideoFeeds(remoteUids, cameraStatusSnapshot.data ?? {}),
-                        _buildLifecycleOverlay(),
-                      ],
-                    );
-                  },
+            return StreamBuilder<Map<int, bool>>(
+              stream: _agoraService.usersCameraStatus,
+              builder: (context, cameraStatusSnapshot) {
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    _buildVideoFeeds(_remoteUids, cameraStatusSnapshot.data ?? {}),
+                    DebateLifecycleOverlay(
+                      lifecycleState: _lifecycleState,
+                      countdownSeconds: _countdownSeconds,
+                      disconnectionSeconds: _disconnectionSeconds,
+                    ),
+                  ],
                 );
               },
             );
@@ -252,6 +278,46 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildAppBarActions() {
+    return [
+      StreamBuilder<int>(
+        stream: _agoraService.localMicVolume,
+        builder: (context, snapshot) {
+          final volume = snapshot.data ?? 0;
+          return Container(
+            margin: const EdgeInsets.only(right: 12.0),
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: volume > 0 ? Colors.green.withAlpha((volume * 255 / 255.0).round()) : Colors.red,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Icon(volume > 0 ? Icons.graphic_eq : Icons.mic_off, color: Colors.white, size: 18),
+            ),
+          );
+        },
+      ),
+      IconButton(
+        icon: Icon(_agoraService.isMicEnabled ? Icons.mic : Icons.mic_off),
+        onPressed: widget.isSpectator ? null : _toggleMic,
+      ),
+      IconButton(
+        icon: Icon(_agoraService.isCameraEnabled ? Icons.videocam : Icons.videocam_off),
+        onPressed: widget.isSpectator ? null : _toggleCamera,
+      ),
+      if (!widget.isSpectator)
+        IconButton(
+          icon: const Icon(Icons.cameraswitch),
+          onPressed: () => _agoraService.switchCamera(),
+        ),
+      IconButton(
+        icon: const Icon(Icons.call_end, color: Colors.red),
+        onPressed: _endCall,
+      ),
+    ];
   }
 
   Widget _buildVideoFeeds(List<int> remoteUids, Map<int, bool> usersCameraStatus) {
@@ -264,65 +330,25 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
       children: [
         if (remoteUser != null)
           SizedBox.expand(
-            child: _videoView(remoteUser, usersCameraStatus[remoteUser] ?? true, _engine!),
+            child: DebateVideoView(
+              uid: remoteUser,
+              isVideoEnabled: usersCameraStatus[remoteUser] ?? true,
+              engine: _engine!,
+            ),
           ),
         if (localUser != null)
           Positioned(
             bottom: 20, right: 20, width: 120, height: 160,
             child: Container(
               decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2)),
-              child: _videoView(localUser, usersCameraStatus[localUser] ?? true, _engine!),
+              child: DebateVideoView(
+                uid: localUser,
+                isVideoEnabled: usersCameraStatus[localUser] ?? true,
+                engine: _engine!,
+              ),
             ),
           ),
       ],
-    );
-  }
-
-  Widget _buildLifecycleOverlay() {
-    if (_lifecycleState == DebateLifecycleState.inProgress) {
-      return const SizedBox.shrink();
-    }
-    return Positioned.fill(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          color: Colors.black.withOpacity(0.5),
-          child: Center(
-            child: _buildOverlayContent(),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOverlayContent() {
-    switch (_lifecycleState) {
-      case DebateLifecycleState.waitingForOpponent:
-        return const Text('Waiting for an opponent...', style: TextStyle(color: Colors.white, fontSize: 24));
-      case DebateLifecycleState.countdownToStart:
-        return Text(_countdownSeconds.toString(), style: const TextStyle(color: Colors.white, fontSize: 96, fontWeight: FontWeight.bold));
-      case DebateLifecycleState.opponentDisconnected:
-        return Text('Opponent disconnected. Reconnecting in...\n$_disconnectionSeconds', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22));
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _videoView(int uid, bool isVideoEnabled, RtcEngine engine) {
-    return ClipRRect(
-      child: Stack(
-        children: [
-          if (isVideoEnabled)
-            AgoraVideoView(
-              controller: VideoViewController(rtcEngine: engine, canvas: VideoCanvas(uid: uid)),
-            ),
-          if (!isVideoEnabled)
-            Container(
-              color: Colors.black,
-              child: const Center(child: Icon(Icons.videocam_off, color: Colors.white, size: 48)),
-            ),
-        ],
-      ),
     );
   }
 }
