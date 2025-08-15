@@ -55,6 +55,7 @@ class AgoraService {
       RtcEngineEventHandler(
         onJoinChannelSuccess: (connection, elapsed) {
           print("L'utilisateur ${connection.localUid} a rejoint le canal.");
+          if (_usersCameraStatus.isClosed) return;
           final currentStatus = _usersCameraStatus.value;
           _usersCameraStatus.add({
             ...currentStatus,
@@ -63,8 +64,11 @@ class AgoraService {
         },
         onUserJoined: (connection, remoteUid, elapsed) {
           print("L'utilisateur distant $remoteUid a rejoint le canal.");
+          if (_remoteUsers.isClosed) return;
           final currentUsers = _remoteUsers.value;
           _remoteUsers.add([...currentUsers, remoteUid]);
+
+          if (_usersCameraStatus.isClosed) return;
           final currentStatus = _usersCameraStatus.value;
           _usersCameraStatus.add({
             ...currentStatus,
@@ -73,18 +77,22 @@ class AgoraService {
         },
         onUserOffline: (connection, remoteUid, reason) {
           print("L'utilisateur distant $remoteUid a quitté le canal.");
+          if (_remoteUsers.isClosed) return;
           final currentUsers = _remoteUsers.value;
           _remoteUsers.add(currentUsers.where((uid) => uid != remoteUid).toList());
+
+          if (_usersCameraStatus.isClosed) return;
           final currentStatus = _usersCameraStatus.value;
           currentStatus.remove(remoteUid);
           _usersCameraStatus.add(currentStatus);
         },
         onLeaveChannel: (connection, stats) {
           print("L'utilisateur a quitté le canal.");
-          _remoteUsers.add([]);
-          _usersCameraStatus.add({});
+          if (!_remoteUsers.isClosed) _remoteUsers.add([]);
+          if (!_usersCameraStatus.isClosed) _usersCameraStatus.add({});
         },
         onAudioVolumeIndication: (connection, speakers, totalVolume, speakerNumber) {
+          if (_localMicVolume.isClosed) return;
           for (var speaker in speakers) {
             if (speaker.uid == 0) {
               _localMicVolume.add(speaker.volume ?? 0);
@@ -93,6 +101,7 @@ class AgoraService {
           }
         },
         onUserEnableVideo: (connection, remoteUid, enabled) {
+          if (_usersCameraStatus.isClosed) return;
           final currentStatus = _usersCameraStatus.value;
           _usersCameraStatus.add({
             ...currentStatus,
@@ -100,6 +109,7 @@ class AgoraService {
           });
         },
         onUserMuteVideo: (connection, remoteUid, muted) {
+          if (_usersCameraStatus.isClosed) return;
           final currentStatus = _usersCameraStatus.value;
           _usersCameraStatus.add({
             ...currentStatus,

@@ -7,27 +7,44 @@ class DebateService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Crée un nouveau débat dans Firestore.
+  /// Crée un nouveau débat dans Firestore en fonction de son type.
   Future<String> createDebate({
-    required String title,
-    required String description,
+    required String type,
+    String? title, // Pour le type 'talk'
+    String? choice1, // Pour les types 'duel' et 'deliberation'
+    String? choice2, // Pour les types 'duel' et 'deliberation'
   }) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
       throw Exception("Aucun utilisateur connecté.");
     }
 
-    final newDebateRef = await _firestore.collection('debates').add({
-      'title': title,
-      'description': description,
+    // Prépare les données de base du débat.
+    final Map<String, dynamic> debateData = {
+      'type': type,
       'hostId': currentUser.uid,
       'hostName': currentUser.displayName ?? 'Anonyme',
       'status': 'live',
       'participants': [currentUser.uid],
       'participants_count': 1,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
 
+    // Ajoute les champs spécifiques au type.
+    switch (type) {
+      case 'talk':
+        debateData['title'] = title ?? ''; // Le titre est optionnel
+        break;
+      case 'duel':
+      case 'deliberation':
+        debateData['choice1'] = choice1;
+        debateData['choice2'] = choice2;
+        // Le titre pour ces types peut être une combinaison des choix.
+        debateData['title'] = '$choice1 vs $choice2'; 
+        break;
+    }
+
+    final newDebateRef = await _firestore.collection('debates').add(debateData);
     return newDebateRef.id;
   }
 
@@ -59,14 +76,15 @@ class DebateService {
     });
   }
 
-  /// Retourne un flux (stream) des débats en attente d'un adversaire.
-  Stream<QuerySnapshot> getAvailableDebatesStream() {
+  /// Retourne un flux (stream) des débats en attente pour un type spécifique.
+  Stream<QuerySnapshot> getAvailableDebatesStream({required String type}) {
     // Le filtrage pour exclure les propres débats de l'utilisateur se fait côté client,
     // car Firestore ne supporte pas les requêtes 'isNotEqualTo'.
     return _firestore
         .collection('debates')
         .where('status', isEqualTo: 'live')
         .where('participants_count', isEqualTo: 1)
+        .where('type', isEqualTo: type) // Filtre par le type de débat
         .snapshots();
   }
 }

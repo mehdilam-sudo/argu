@@ -2,7 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:argu/pages/watch_debate_screen.dart'; // Import de la nouvelle page
+import 'package:argu/pages/watch_live_debate_screen.dart'; // Import de la nouvelle page
 
 class SearchPage extends StatelessWidget {
   const SearchPage({super.key});
