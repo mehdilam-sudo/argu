@@ -148,11 +148,13 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
       final debateDoc = await FirebaseFirestore.instance.collection('debates').doc(widget.debateId).get();
       final data = debateDoc.data();
       
-      // FIX: setState is called synchronously after the await.
       if (mounted) {
         setState(() => _lifecycleState = DebateLifecycleState.inProgress);
-        if (data != null && data.containsKey('createdAt')) {
-          _startMainTimer((data['createdAt'] as Timestamp).toDate());
+        if (data != null && data.containsKey('startedAt')) {
+          _startMainTimer((data['startedAt'] as Timestamp).toDate());
+        } else {
+          // Fallback to current time if startedAt is not available
+          _startMainTimer(DateTime.now());
         }
       }
     } catch (e) {
@@ -326,11 +328,6 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
         icon: Icon(_agoraService.isCameraEnabled ? Icons.videocam : Icons.videocam_off),
         onPressed: widget.isSpectator ? null : _toggleCamera,
       ),
-      if (!widget.isSpectator)
-        IconButton(
-          icon: const Icon(Icons.cameraswitch),
-          onPressed: () => _agoraService.switchCamera(),
-        ),
       IconButton(
         icon: const Icon(Icons.call_end, color: Colors.red),
         onPressed: _endCall,
@@ -360,30 +357,27 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
   }
 
   Widget _buildUserVideo(int uid, bool isVideoEnabled, String? username) {
-    return Container(
-      decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2)),
-      child: Stack(
-        children: [
-          DebateVideoView(
-            uid: uid,
-            isVideoEnabled: isVideoEnabled,
-            engine: _engine!,
-          ),
-          if (username != null)
-            Positioned(
-              bottom: 8,
-              left: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                color: Colors.black.withAlpha(128),
-                child: Text(
-                  username,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
+    return Stack(
+      children: [
+        DebateVideoView(
+          uid: uid,
+          isVideoEnabled: isVideoEnabled,
+          engine: _engine!,
+        ),
+        if (username != null)
+          Positioned(
+            bottom: 8,
+            left: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              color: Colors.black.withAlpha(128),
+              child: Text(
+                username,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

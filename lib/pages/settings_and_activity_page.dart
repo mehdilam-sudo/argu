@@ -1,6 +1,6 @@
+import 'package:argu/pages/login_or_register_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'login_page.dart';
 
 class SettingsAndActivityPage extends StatelessWidget {
   const SettingsAndActivityPage({super.key});
@@ -31,8 +31,7 @@ class SettingsAndActivityPage extends StatelessWidget {
         await FirebaseAuth.instance.signOut();
         if (context.mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            // Correction ici : on retire 'const'
-            MaterialPageRoute(builder: (context) => LoginPage(onTap: () {})),
+            MaterialPageRoute(builder: (context) => const LoginOrRegisterPage()),
             (Route<dynamic> route) => false,
           );
         }

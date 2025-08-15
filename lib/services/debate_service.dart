@@ -2,7 +2,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class DebateService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -25,7 +24,6 @@ class DebateService {
       throw Exception("Données utilisateur introuvables.");
     }
     final userData = userDoc.data()!;
-    final pseudo = userData['pseudo'] as String? ?? 'Anonyme';
 
     // Prépare les données de base du débat.
     final Map<String, dynamic> debateData = {
@@ -89,6 +87,7 @@ class DebateService {
           'participants': FieldValue.arrayUnion([currentUser.uid]),
           'participants_count': FieldValue.increment(1),
           'debatorTwo': pseudo,
+          'startedAt': FieldValue.serverTimestamp(),
         });
       } else {
         throw Exception("Ce débat a déjà été rejoint par un autre adversaire.");

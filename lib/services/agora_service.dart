@@ -35,10 +35,12 @@ class AgoraService {
       appId: _agoraAppId,
     ));
 
+    await _engine!.setAINSMode(enabled: true, mode: AudioAinsMode.ainsModeAggressive);
+
     _engine!.enableAudioVolumeIndication(
       interval: 200,
       smooth: 3,
-      reportVad: false,
+      reportVad: true,
     );
 
     await _engine!.enableVideo();
@@ -94,7 +96,11 @@ class AgoraService {
           if (_localMicVolume.isClosed) return;
           for (var speaker in speakers) {
             if (speaker.uid == 0) { // 0 is the local user
-              _localMicVolume.add(speaker.volume ?? 0);
+              if (speaker.vad == 1) {
+                _localMicVolume.add(speaker.volume ?? 0);
+              } else {
+                _localMicVolume.add(0);
+              }
               break;
             }
           }
