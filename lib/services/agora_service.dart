@@ -6,15 +6,8 @@ import 'package:rxdart/rxdart.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+// This is now a regular class. A new instance will be created for each debate.
 class AgoraService {
-  static final AgoraService _instance = AgoraService._internal();
-
-  factory AgoraService() {
-    return _instance;
-  }
-
-  AgoraService._internal();
-
   RtcEngine? _engine;
   final String _agoraAppId = "1f30c822357e4bb6b134faa84a0ebac1";
   final String _tokenServerUrl = 'http://192.168.0.45:8080';
@@ -23,6 +16,7 @@ class AgoraService {
   bool isCameraEnabled = true;
 
   // Use BehaviorSubject to get the last emitted value upon subscription.
+  // These are re-initialized for each new instance of the service.
   final _remoteUsers = BehaviorSubject<List<int>>.seeded([]);
   final _localMicVolume = BehaviorSubject<int>.seeded(0);
   final _usersCameraStatus = BehaviorSubject<Map<int, bool>>.seeded({});

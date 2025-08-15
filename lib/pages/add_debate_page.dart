@@ -325,10 +325,14 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
 
               // New: Dynamically build the title based on debate type.
               String displayTitle;
-              if (debateData['type'] == 'duel' || debateData['type'] == 'deliberation') {
+              if (debateData['type'] == 'duel') {
                 final choice1 = debateData['choice1'] ?? '...';
                 final choice2 = debateData['choice2'] ?? '...';
                 displayTitle = '$choice1 vs $choice2';
+              } else if (debateData['type'] == 'deliberation') {
+                final choice1 = debateData['choice1'] ?? '...';
+                final choice2 = debateData['choice2'] ?? '...';
+                displayTitle = '$choice1 or $choice2';
               } else {
                 displayTitle = debateData['title'] as String? ?? 'Untitled Debate';
               }

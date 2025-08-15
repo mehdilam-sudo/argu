@@ -1,5 +1,7 @@
 // lib/widgets/debate_lifecycle_overlay.dart
 
+// ignore_for_file: deprecated_member_use
+
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:argu/pages/live_debate_screen.dart'; // Import the enum
