@@ -254,8 +254,18 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
           ),
           const SizedBox(height: 24),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary, 
+              foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10.0), // Rayon de 10.0
+            ),
+            ),
             onPressed: _isCreating ? null : _createDebate,
-            child: _isCreating ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start Debate'),
+            child: _isCreating ? const SizedBox(
+              height: 20, 
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start Debate'),
           ),
         ],
       ),
@@ -278,7 +288,17 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: _isCreating ? null : _createDebate,
-            child: _isCreating ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start Debate'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary, 
+              foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10.0), // Rayon de 10.0
+            ),
+            ),
+            child: _isCreating ? const SizedBox(
+              height: 20, 
+              width: 20, 
+              child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start Debate'),
           ),
         ],
       ),
