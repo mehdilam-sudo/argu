@@ -1,4 +1,5 @@
 // lib/services/debate_service.dart
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,17 +14,25 @@ class DebateService {
     String? title, // Pour le type 'talk'
     String? choice1, // Pour les types 'duel' et 'deliberation'
     String? choice2, // Pour les types 'duel' et 'deliberation'
+    int? durationInMinutes,
   }) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
       throw Exception("Aucun utilisateur connecté.");
     }
+    final userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
+    if (!userDoc.exists) {
+      throw Exception("Données utilisateur introuvables.");
+    }
+    final userData = userDoc.data()!;
+    final pseudo = userData['pseudo'] as String? ?? 'Anonyme';
 
     // Prépare les données de base du débat.
     final Map<String, dynamic> debateData = {
       'type': type,
       'hostId': currentUser.uid,
       'hostName': currentUser.displayName ?? 'Anonyme',
+      'debatorOne':userData['pseudo'] ?? '',
       'status': 'live',
       'participants': [currentUser.uid],
       'participants_count': 1,
@@ -41,6 +50,9 @@ class DebateService {
         debateData['choice2'] = choice2;
         // Le titre pour ces types peut être une combinaison des choix.
         debateData['title'] = '$choice1 vs $choice2'; 
+        if (type == 'duel' && durationInMinutes != null) {
+          debateData['durationInMinutes'] = durationInMinutes;
+        }
         break;
     }
 
@@ -54,6 +66,13 @@ class DebateService {
     if (currentUser == null) {
       throw Exception("Aucun utilisateur connecté.");
     }
+
+    final userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
+    if (!userDoc.exists) {
+      throw Exception("Données utilisateur introuvables.");
+    }
+    final userData = userDoc.data()!;
+    final pseudo = userData['pseudo'] as String? ?? 'Anonyme';
 
     final debateRef = _firestore.collection('debates').doc(debateId);
 
@@ -69,6 +88,7 @@ class DebateService {
         transaction.update(debateRef, {
           'participants': FieldValue.arrayUnion([currentUser.uid]),
           'participants_count': FieldValue.increment(1),
+          'debatorTwo': pseudo,
         });
       } else {
         throw Exception("Ce débat a déjà été rejoint par un autre adversaire.");

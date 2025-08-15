@@ -42,6 +42,8 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
   DebateLifecycleState _lifecycleState = DebateLifecycleState.waitingForOpponent;
   StreamSubscription? _remoteUsersSubscription;
   List<int> _remoteUids = [];
+  String? _debatorOneUsername;
+  String? _debatorTwoUsername;
 
   // Timers
   Timer? _mainDebateTimer;
@@ -58,6 +60,7 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
       _lifecycleState = DebateLifecycleState.inProgress;
     }
     _initializationFuture = _initializeScreen();
+    _fetchDebateDetails();
   }
 
   @override
@@ -71,6 +74,21 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
   }
 
   // --- Initialization and State Management ---
+
+  Future<void> _fetchDebateDetails() async {
+    try {
+      final debateDoc = await FirebaseFirestore.instance.collection('debates').doc(widget.debateId).get();
+      final data = debateDoc.data();
+      if (data != null && mounted) {
+        setState(() {
+          _debatorOneUsername = data['debatorOne'];
+          _debatorTwoUsername = data['debatorTwo'];
+        });
+      }
+    } catch (e) {
+      print("Error fetching debate details: $e");
+    }
+  }
 
   Future<void> _initializeScreen() async {
     try {
@@ -98,6 +116,7 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
     if (widget.isSpectator || _lifecycleState == DebateLifecycleState.finished) return;
 
     if (remoteParticipantCount > 0 && _lifecycleState == DebateLifecycleState.waitingForOpponent) {
+      _fetchDebateDetails(); // Fetch usernames when opponent joins
       _startCountdown();
     } else if (remoteParticipantCount == 0 && _lifecycleState == DebateLifecycleState.inProgress) {
       _startDisconnectionGracePeriod();
@@ -329,25 +348,42 @@ class _LiveDebateScreenState extends State<LiveDebateScreen> {
       children: [
         if (remoteUser != null)
           SizedBox.expand(
-            child: DebateVideoView(
-              uid: remoteUser,
-              isVideoEnabled: usersCameraStatus[remoteUser] ?? true,
-              engine: _engine!,
-            ),
+            child: _buildUserVideo(remoteUser, usersCameraStatus[remoteUser] ?? true, _debatorTwoUsername),
           ),
         if (localUser != null)
           Positioned(
             bottom: 20, right: 20, width: 120, height: 160,
-            child: Container(
-              decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2)),
-              child: DebateVideoView(
-                uid: localUser,
-                isVideoEnabled: usersCameraStatus[localUser] ?? true,
-                engine: _engine!,
-              ),
-            ),
+            child: _buildUserVideo(localUser, usersCameraStatus[localUser] ?? true, _debatorOneUsername),
           ),
       ],
+    );
+  }
+
+  Widget _buildUserVideo(int uid, bool isVideoEnabled, String? username) {
+    return Container(
+      decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2)),
+      child: Stack(
+        children: [
+          DebateVideoView(
+            uid: uid,
+            isVideoEnabled: isVideoEnabled,
+            engine: _engine!,
+          ),
+          if (username != null)
+            Positioned(
+              bottom: 8,
+              left: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                color: Colors.black.withAlpha(128),
+                child: Text(
+                  username,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

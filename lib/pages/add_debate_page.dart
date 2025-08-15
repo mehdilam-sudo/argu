@@ -43,6 +43,7 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
   // State flags for loading indicators.
   bool _isCreating = false;
   final Set<String> _joiningDebateIds = {};
+  int _selectedDuelDurationInMinutes = 10;
 
   @override
   void initState() {
@@ -69,6 +70,7 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
 
     try {
       String? title, choice1, choice2;
+      int? duration;
 
       // Populate data from the correct text controllers based on the debate type.
       switch (type) {
@@ -78,6 +80,7 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
         case 'duel':
           choice1 = _controllers['duel_choice1']!.text;
           choice2 = _controllers['duel_choice2']!.text;
+          duration = _selectedDuelDurationInMinutes;
           break;
         case 'deliberation':
           choice1 = _controllers['deliberation_choice1']!.text;
@@ -91,6 +94,7 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
         title: title,
         choice1: choice1,
         choice2: choice2,
+        durationInMinutes: duration,
       );
 
       if (mounted) {
@@ -236,38 +240,68 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
 
   /// Builds the form for 'Duel' and 'Deliberation' types.
   Widget _buildDuelOrDeliberationForm(String type) {
+    final formChildren = <Widget>[
+      TextFormField(
+        controller: _controllers['${type}_choice1'],
+        decoration: const InputDecoration(labelText: 'Option 1'),
+        validator: (value) => (value == null || value.isEmpty) ? 'Please enter option 1' : null,
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _controllers['${type}_choice2'],
+        decoration: const InputDecoration(labelText: 'Option 2'),
+        validator: (value) => (value == null || value.isEmpty) ? 'Please enter option 2' : null,
+      ),
+    ];
+
+    if (type == 'duel') {
+      formChildren.addAll([
+        const SizedBox(height: 16),
+        DropdownButtonFormField<int>(
+          value: _selectedDuelDurationInMinutes,
+          decoration: const InputDecoration(
+            labelText: 'Debate Duration',
+            border: OutlineInputBorder(),
+          ),
+          items: [5, 10, 15, 30].map((int value) {
+            return DropdownMenuItem<int>(
+              value: value,
+              child: Text('$value minutes'),
+            );
+          }).toList(),
+          onChanged: (newValue) {
+            if (newValue != null) {
+              setState(() {
+                _selectedDuelDurationInMinutes = newValue;
+              });
+            }
+          },
+        ),
+      ]);
+    }
+
+    formChildren.addAll([
+      const SizedBox(height: 24),
+      ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10.0),
+          ),
+        ),
+        onPressed: _isCreating ? null : _createDebate,
+        child: _isCreating
+            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Text('Start Debate'),
+      ),
+    ]);
+
     return Form(
       key: _formKeys[type],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextFormField(
-            controller: _controllers['${type}_choice1'],
-            decoration: const InputDecoration(labelText: 'Option 1'),
-            validator: (value) => (value == null || value.isEmpty) ? 'Please enter option 1' : null,
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _controllers['${type}_choice2'],
-            decoration: const InputDecoration(labelText: 'Option 2'),
-            validator: (value) => (value == null || value.isEmpty) ? 'Please enter option 2' : null,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary, 
-              foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10.0), // Rayon de 10.0
-            ),
-            ),
-            onPressed: _isCreating ? null : _createDebate,
-            child: _isCreating ? const SizedBox(
-              height: 20, 
-              width: 20,
-              child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start Debate'),
-          ),
-        ],
+        children: formChildren,
       ),
     );
   }
@@ -282,23 +316,21 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
           TextFormField(
             controller: _controllers['talk_title'],
             decoration: const InputDecoration(labelText: 'Debate Title'),
-            // New: Validator added to make the title mandatory.
             validator: (value) => (value == null || value.isEmpty) ? 'Please enter a title' : null,
           ),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: _isCreating ? null : _createDebate,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary, 
+              backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10.0), // Rayon de 10.0
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10.0),
+              ),
             ),
-            ),
-            child: _isCreating ? const SizedBox(
-              height: 20, 
-              width: 20, 
-              child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start Debate'),
+            child: _isCreating
+                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Start Debate'),
           ),
         ],
       ),
@@ -316,7 +348,6 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
         if (snapshot.hasError) {
           return SliverToBoxAdapter(child: Center(child: Text('Error: ${snapshot.error}')));
         }
-        
         final debates = snapshot.data?.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>?;
           return data?['hostId'] != FirebaseAuth.instance.currentUser?.uid;
@@ -343,12 +374,24 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
               final debateId = debate.id;
               final isJoining = _joiningDebateIds.contains(debateId);
 
-              // New: Dynamically build the title based on debate type.
               String displayTitle;
+              String? subtitleText;
+              String? durationText;
+              String? debatorOneText;
+
               if (debateData['type'] == 'duel') {
                 final choice1 = debateData['choice1'] ?? '...';
                 final choice2 = debateData['choice2'] ?? '...';
                 displayTitle = '$choice1 vs $choice2';
+                final duration = debateData['durationInMinutes'];
+                final debatorOne = debateData['debatorOne'] ?? '...';
+                if (duration != null) {
+                  durationText = '$duration minutes';
+                } 
+                if (debatorOne != null) {
+                  debatorOneText = '@ $debatorOne';
+                  subtitleText = '$durationText $debatorOneText';
+                }
               } else if (debateData['type'] == 'deliberation') {
                 final choice1 = debateData['choice1'] ?? '...';
                 final choice2 = debateData['choice2'] ?? '...';
@@ -361,6 +404,7 @@ class _AddDebatePageState extends State<AddDebatePage> with SingleTickerProvider
                 margin: const EdgeInsets.symmetric(vertical: 6.0),
                 child: ListTile(
                   title: Text(displayTitle),
+                  subtitle: subtitleText != null ? Text(subtitleText) : null,
                   trailing: ElevatedButton(
                     onPressed: isJoining ? null : () => _joinDebate(debateId),
                     child: isJoining ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Join'),
